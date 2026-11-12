@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>전국 시설관리 공조 가이드</title>
+  
+  <!-- PWA 설정 연결 -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/4814/4814268.png">
+
+  <!-- Tailwind CSS (디자인 프레임워크) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif; background-color: #f1f5f9; }
+    input[type=range] { accent-color: #2563eb; }
+  </style>
+</head>
+<body class="text-slate-800 pb-12">
+
+  <!-- 상단 헤더 -->
+  <header class="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-10">
+    <div class="max-w-lg mx-auto flex justify-between items-center">
+      <div>
+        <h1 class="text-lg font-bold tracking-tight flex items-center gap-2">
+          <span>🏢</span> 전국 시설관리 공조 가이드
+        </h1>
+        <p class="text-xs text-slate-400">외기온도·습도 기반 실내 적정 세팅</p>
+      </div>
+      <button onclick="getGPSWeather()" class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1 transition">
+        <span>📍</span> 내 위치
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-lg mx-auto p-4 space-y-4">
+
+    <!-- 1. 지역 선택 카드 -->
+    <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+      <div class="flex justify-between items-center">
+        <label class="text-xs font-bold text-slate-500 uppercase">관할 지역 선택</label>
+        <span id="weather-status" class="text-xs text-emerald-600 font-medium">실시간 기상 연동됨</span>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-2">
+        <select id="sido-select" onchange="updateSigungu()" class="bg-slate-50 border border-slate-300 text-sm rounded-xl p-2.5 font-semibold focus:outline-none focus:border-blue-500">
+          <!-- JS로 시/도 채움 -->
+        </select>
+        <select id="sigungu-select" onchange="fetchSelectedWeather()" class="bg-slate-50 border border-slate-300 text-sm rounded-xl p-2.5 font-semibold focus:outline-none focus:border-blue-500">
+          <!-- JS로 시/군/구 채움 -->
+        </select>
+      </div>
+
+      <!-- 현재 외기 정보 요약 -->
+      <div class="bg-slate-50 rounded-xl p-3 flex justify-around items-center border border-slate-100">
+        <div class="text-center">
+          <div class="text-xs text-slate-500">외기 온도</div>
+          <div id="disp-temp" class="text-xl font-extrabold text-slate-800">--°C</div>
+        </div>
+        <div class="h-8 w-px bg-slate-200"></div>
+        <div class="text-center">
+          <div class="text-xs text-slate-500">외기 습도</div>
+          <div id="disp-hum" class="text-xl font-extrabold text-blue-600">--%</div>
+        </div>
+        <div class="h-8 w-px bg-slate-200"></div>
+        <div class="text-center">
+          <div class="text-xs text-slate-500">외기 체감</div>
+          <div id="disp-apparent" class="text-xl font-extrabold text-slate-700">--°C</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 시설 유형 선택 -->
+    <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+      <label class="text-xs font-bold text-slate-500 uppercase block mb-2">관리 시설 용도</label>
+      <div class="grid grid-cols-3 gap-2" id="facility-buttons">
+        <button onclick="setFacility('office', this)" class="fac-btn bg-blue-600 text-white text-xs font-bold py-2.5 rounded-xl border border-blue-600 transition">오피스·상가</button>
+        <button onclick="setFacility('apt', this)" class="fac-btn bg-slate-50 text-slate-600 text-xs font-bold py-2.5 rounded-xl border border-slate-200 transition">공동주택·로비</button>
+        <button onclick="setFacility('work', this)" class="fac-btn bg-slate-50 text-slate-600 text-xs font-bold py-2.5 rounded-xl border border-slate-200 transition">현장·작업장</button>
+      </div>
+    </section>
+
+    <!-- 3. 핵심 결과: 권장 실내 설정 온도 -->
+    <section id="result-card" class="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-5 rounded-2xl shadow-md space-y-4">
+      <div class="flex justify-between items-start">
+        <div>
+          <span id="season-badge" class="bg-white/20 text-white text-xs font-bold px-2.5 py-1 rounded-full">계절 분석 중</span>
+          <h2 class="text-sm text-blue-100 mt-2">권장 실내 설정 온도</h2>
+          <div class="flex items-baseline gap-2 mt-0.5">
+            <span id="target-temp" class="text-5xl font-black tracking-tight">--.-°C</span>
+            <span id="hvac-mode" class="text-sm font-bold bg-white text-blue-700 px-2.5 py-0.5 rounded-md">대기</span>
+          </div>
+        </div>
+        <div class="text-right bg-black/20 p-2.5 rounded-xl">
+          <div class="text-[11px] text-blue-200">실내외 온도차 (ΔT)</div>
+          <div id="temp-diff" class="text-lg font-bold">--°C</div>
+        </div>
+      </div>
+
+      <div class="bg-white/10 rounded-xl p-3 text-xs leading-relaxed text-blue-50" id="guide-comment">
+        지역을 선택하시면 외기 조건에 맞춘 공조 제어 가이드를 계산합니다.
+      </div>
+    </section>
+
+    <!-- 4. 현장 실무 체크포인트 -->
+    <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-2.5">
+      <h3 class="text-xs font-bold text-slate-500 uppercase">오늘의 설비 점검 포인트</h3>
+      <ul id="checklist-area" class="space-y-2 text-sm text-slate-700">
+        <!-- JS로 동적 생성 -->
+      </ul>
+    </section>
+
+    <!-- 5. 수동 시뮬레이터 (예비 테스트용) -->
+    <section class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+      <div class="flex justify-between items-center">
+        <h3 class="text-xs font-bold text-slate-500 uppercase">수동 온도 시뮬레이션 (테스트용)</h3>
+        <button onclick="fetchSelectedWeather()" class="text-xs text-blue-600 underline">실시간 복귀</button>
+      </div>
+      <div>
+        <div class="flex justify-between text-xs font-semibold mb-1">
+          <span>가상 외기온도</span>
+          <span id="sim-temp-val" class="text-blue-600">20°C</span>
+        </div>
+        <input type="range" id="sim-temp" min="-15" max="40" value="20" oninput="runSimulation()" class="w-full">
+      </div>
+      <div>
+        <div class="flex justify-between text-xs font-semibold mb-1">
+          <span>가상 외기습도</span>
+          <span id="sim-hum-val" class="text-blue-600">50%</span>
+        </div>
+        <input type="range" id="sim-hum" min="10" max="100" value="50" oninput="runSimulation()" class="w-full">
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // 전국 시/도 및 주요 시/군/구 좌표 데이터 (확장 가능)
+    const KOREA_REGIONS = {
+      "경상남도": {
+        "창원시 성산구": [35.204, 128.681], "창원시 의창구": [35.254, 128.639],
+        "창원시 마산합포구": [35.183, 128.567], "창원시 마산회원구": [35.221, 128.579],
+        "창원시 진해구": [35.149, 128.660], "김해시": [35.228, 128.889],
+        "양산시": [35.335, 129.037], "진주시": [35.180, 128.107], "거제시": [34.880, 128.621]
+      },
+      "서울특별시": {
+        "강남구": [37.517, 127.047], "서초구": [37.483, 127.032], "송파구": [37.514, 127.105],
+        "영등포구": [37.526, 126.896], "마포구": [37.566, 126.901], "종로구": [37.573, 126.979],
+        "강서구": [37.550, 126.849], "노원구": [37.654, 127.056]
+      },
+      "부산광역시": {
+        "해운대구": [35.163, 129.163], "부산진구": [35.162, 129.053], "강서구": [35.212, 128.980],
+        "사하구": [35.104, 128.974], "동래구": [35.204, 129.083], "남구": [35.136, 129.084]
+      },
+      "인천광역시": {
+        "연수구(송도)": [37.410, 126.678], "남동구": [37.447, 126.731], "부평구": [37.507, 126.721], "서구(청라)": [37.545, 126.676]
+      },
+      "대구광역시": {
+        "수성구": [35.858, 128.630], "달서구": [35.829, 128.532], "중구": [35.869, 128.606], "북구": [35.885, 128.582]
+      },
+      "대전광역시": {
+        "유성구": [36.362, 127.356], "서구": [36.355, 127.383], "중구": [36.325, 127.421]
+      },
+      "광주광역시": {
+        "서구": [35.152, 126.889], "북구": [35.174, 126.912], "광산구": [35.139, 126.793]
+      },
+      "울산광역시": {
+        "남구": [35.543, 129.330], "울주군": [35.522, 129.242], "북구": [35.582, 129.361]
+      },
+      "경기도": {
+        "수원시 영통구": [37.259, 127.046], "성남시 분당구": [37.382, 127.118],
+        "화성시(동탄)": [37.200, 127.075], "용인시 수지구": [37.322, 127.097],
+        "고양시 일산동구": [37.658, 126.774], "평택시": [36.992, 127.112]
+      },
+      "강원특별자치도": {
+        "춘천시": [37.881, 127.729], "원주시": [37.342, 127.920], "강릉시": [37.751, 128.876]
+      },
+      "충청북도": {
+        "청주시 흥덕구": [36.635, 127.426], "충주시": [36.991, 127.925]
+      },
+      "충청남도": {
+        "천안시 서북구": [36.815, 127.113], "아산시": [36.789, 127.001]
+      },
+      "전북특별자치도": {
+        "전주시 완산구": [35.812, 127.119], "군산시": [35.967, 126.736]
+      },
+      "전라남도": {
+        "여수시": [34.760, 127.662], "순천시": [34.950, 127.487], "목포시": [34.811, 126.392]
+      },
+      "경상북도": {
+        "포항시 남구": [36.019, 129.343], "구미시": [36.119, 128.344], "경주시": [35.856, 129.224]
+      },
+      "제주특별자치도": {
+        "제주시": [33.499, 126.531], "서귀포시": [33.254, 126.560]
+      }
+    };
+
+    let currentTemp = 20;
+    let currentHum = 50;
+    let facilityType = 'office'; // office, apt, work
+
+    // 초기화
+    window.onload = () => {
+      const sidoSel = document.getElementById('sido-select');
+      Object.keys(KOREA_REGIONS).forEach(sido => {
+        const opt = document.createElement('option');
+        opt.value = sido;
+        opt.textContent = sido;
+        sidoSel.appendChild(opt);
+      });
+      updateSigungu();
+      registerSW();
+    };
+
+    function updateSigungu() {
+      const sido = document.getElementById('sido-select').value;
+      const sigunguSel = document.getElementById('sigungu-select');
+      sigunguSel.innerHTML = '';
+      Object.keys(KOREA_REGIONS[sido]).forEach(sigungu => {
+        const opt = document.createElement('option');
+        opt.value = sigungu;
+        opt.textContent = sigungu;
+        sigunguSel.appendChild(opt);
+      });
+      fetchSelectedWeather();
+    }
+
+    async function fetchSelectedWeather() {
+      const sido = document.getElementById('sido-select').value;
+      const sigungu = document.getElementById('sigungu-select').value;
+      const [lat, lon] = KOREA_REGIONS[sido][sigungu];
+      await getWeatherFromAPI(lat, lon, `${sido} ${sigungu}`);
+    }
+
+    function getGPSWeather() {
+      if (!navigator.geolocation) {
+        alert("이 기기에서는 GPS 위치 확인을 지원하지 않습니다.");
+        return;
+      }
+      document.getElementById('weather-status').textContent = "GPS 위치 탐색 중...";
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          await getWeatherFromAPI(pos.coords.latitude, pos.coords.longitude, "현재 GPS 위치");
+        },
+        () => {
+          alert("위치 권한이 거부되었거나 신호를 잡을 수 없습니다.");
+          document.getElementById('weather-status').textContent = "GPS 실패";
+        }
+      );
+    }
+
+    async function getWeatherFromAPI(lat, lon, label) {
+      const statusEl = document.getElementById('weather-status');
+      statusEl.textContent = "기상 데이터 수신 중...";
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature&timezone=Asia%2FSeoul`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        currentTemp = data.current.temperature_2m;
+        currentHum = data.current.relative_humidity_2m;
+        const apparent = data.current.apparent_temperature;
+
+        document.getElementById('disp-temp').textContent = `${currentTemp.toFixed(1)}°C`;
+        document.getElementById('disp-hum').textContent = `${currentHum}%`;
+        document.getElementById('disp-apparent').textContent = `${apparent.toFixed(1)}°C`;
+        
+        document.getElementById('sim-temp').value = Math.round(currentTemp);
+        document.getElementById('sim-hum').value = currentHum;
+        document.getElementById('sim-temp-val').textContent = `${Math.round(currentTemp)}°C`;
+        document.getElementById('sim-hum-val').textContent = `${currentHum}%`;
+
+        statusEl.textContent = `● ${label} 연동됨`;
+        calculateHVAC(currentTemp, currentHum);
+      } catch (e) {
+        statusEl.textContent = "통신 오류 (수동 조절 가능)";
+      }
+    }
+
+    function setFacility(type, btn) {
+      facilityType = type;
+      document.querySelectorAll('.fac-btn').forEach(b => {
+        b.className = "fac-btn bg-slate-50 text-slate-600 text-xs font-bold py-2.5 rounded-xl border border-slate-200 transition";
+      });
+      btn.className = "fac-btn bg-blue-600 text-white text-xs font-bold py-2.5 rounded-xl border border-blue-600 transition";
+      calculateHVAC(currentTemp, currentHum);
+    }
+
+    function runSimulation() {
+      const t = parseFloat(document.getElementById('sim-temp').value);
+      const h = parseFloat(document.getElementById('sim-hum').value);
+      currentTemp = t;
+      currentHum = h;
+      document.getElementById('sim-temp-val').textContent = `${t}°C`;
+      document.getElementById('sim-hum-val').textContent = `${h}%`;
+      document.getElementById('disp-temp').textContent = `${t.toFixed(1)}°C`;
+      document.getElementById('disp-hum').textContent = `${h}%`;
+      document.getElementById('disp-apparent').textContent = `${(t + (h - 50) * 0.05).toFixed(1)}°C`;
+      document.getElementById('weather-status').textContent = "수동 시뮬레이션 모드";
+      calculateHVAC(t, h);
+    }
+
+    function calculateHVAC(extTemp, extHum) {
+      let target = 22.0;
+      let mode = "송풍/환기";
+      let badge = "환절기";
+      let comment = "";
+      let checks = [];
+      const card = document.getElementById('result-card');
+
+      // 시설 용도별 온도 오프셋
+      let offset = 0;
+      if (facilityType === 'apt') offset = 0.5;   // 공동주택/로비는 약간 따뜻하게
+      if (facilityType === 'work') offset = -1.5; // 활동량 많은 작업장은 낮게
+
+      if (extTemp < 5) {
+        // 동절기 / 혹한기
+        badge = extTemp < -3 ? "❄️ 혹한기 경보" : "🧣 동절기";
+        mode = "난방 운전";
+        target = 20.0 + offset;
+        card.className = "bg-gradient-to-br from-orange-600 to-red-700 text-white p-5 rounded-2xl shadow-md space-y-4";
+        comment = `외기가 매우 차갑습니다. 과도한 난방은 실내 건조와 결로, 전력 피크의 원인이 되므로 ${target.toFixed(1)}°C 유지를 권장합니다.`;
+        checks = [
+          "외기 도입 댐퍼 개도율 최소화 (10~15% 수준 유지)",
+          "배관 동파 방지 열선 및 옥외 노출 배관 보온 점검",
+          extHum > 75 ? "외기 다습: 창호 및 외벽 결로 발생 집중 모니터링" : "실내 건조 주의: 적정 습도(40~50%) 유지 안내"
+        ];
+      } else if (extTemp >= 5 && extTemp < 16) {
+        // 쌀쌀한 환절기
+        badge = "🍂 서늘한 환절기";
+        mode = "약난방 / 예열";
+        target = 21.0 + offset;
+        card.className = "bg-gradient-to-br from-amber-500 to-orange-600 text-white p-5 rounded-2xl shadow-md space-y-4";
+        comment = `일교차가 큰 구간입니다. 오전 출근·입실 시간대 1~2시간 집중 예열 후 오후에는 송풍 위주로 운전하면 에너지를 절감할 수 있습니다.`;
+        checks = [
+          "오전 예열 운전 후 일사량 증가 시 난방 조기 차단",
+          "전열교환기(환기설비) 바이패스 모드 활용 검토",
+          "실내 재실 인원 밀집 구역 CO2 농도 점검"
+        ];
+      } else if (extTemp >= 16 && extTemp <= 24) {
+        // 쾌적 구간 (외기 냉방)
+        badge = "🌿 쾌적·외기냉방";
+        mode = "외기 도입(송풍)";
+        target = 22.5 + offset;
+        card.className = "bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 rounded-2xl shadow-md space-y-4";
+        comment = `냉난방기 가동 없이 외기 도입(엔탈피 제어)만으로도 쾌적한 실내 환경 유지가 가능한 최적의 기온입니다.`;
+        checks = [
+          "공조기 외기 댐퍼 최대로 개방하여 무동력 외기 냉방 가동",
+          extHum > 70 ? "외기 습도가 다소 높으므로 습도 75% 초과 시 제습 전환" : "환기 필터 차압 점검 및 급기 팬 벨트 상태 확인",
+          "냉동기 및 보일러 대기 전력 차단 점검"
+        ];
+      } else if (extTemp > 24 && extTemp <= 30) {
+        // 하절기
+        badge = "☀️ 하절기";
+        mode = "냉방 운전";
+        target = Math.max(25.0, extTemp - 5.0) + offset;
+        card.className = "bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-5 rounded-2xl shadow-md space-y-4";
+        comment = `냉방병 예방과 에너지 효율을 위해 실내외 온도차를 5~6°C 이내로 관리하는 것이 핵심입니다.`;
+        checks = [
+          "응축수 드레인 배관 막힘 및 누수 여부 점검",
+          extHum > 70 ? "고온다습 조건: 설정온도를 1°C 낮추기보다 제습(풍량 약) 운전 병행" : "실외기 주변 통풍 장애물 제거",
+          "피크 시간대(14~17시) 순차 운전으로 최대수요전력 관리"
+        ];
+      } else {
+        // 폭염기 (30도 초과)
+        badge = "🔥 폭염기 집중관리";
+        mode = "강력 냉방·제습";
+        target = Math.min(26.5, Math.max(25.5, extTemp - 6.5)) + offset;
+        card.className = "bg-gradient-to-br from-indigo-700 to-purple-800 text-white p-5 rounded-2xl shadow-md space-y-4";
+        comment = `외기 온도가 30°C를 넘는 폭염입니다. 실내 온도를 너무 낮추면 실외기 고압 컷(트립)이 발생할 수 있으므로 ${target.toFixed(1)}°C로 방어 운전하세요.`;
+        checks = [
+          "실외기 열교환기 과열 방지(살수 장치 또는 차광막 점검)",
+          "냉매 고압 차단 스위치 및 콤프레셔 전류값 모니터링",
+          "출입문 에어커튼 정상 작동 여부 확인하여 외기 유입 차단"
+        ];
+      }
+
+      const diff = Math.abs(extTemp - target).toFixed(1);
+      document.getElementById('season-badge').textContent = badge;
+      document.getElementById('target-temp').textContent = `${target.toFixed(1)}°C`;
+      document.getElementById('hvac-mode').textContent = mode;
+      document.getElementById('temp-diff').textContent = `${diff}°C 차이`;
+      document.getElementById('guide-comment').textContent = comment;
+
+      const listEl = document.getElementById('checklist-area');
+      listEl.innerHTML = checks.map(item => `
+        <li class="flex items-start gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+          <span class="text-blue-600 font-bold">✓</span>
+          <span>${item}</span>
+        </li>
+      `).join('');
+    }
+
+    // PWA 서비스 워커 등록
+    function registerSW() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      }
+    }
+  </script>
+</body>
+</html>
